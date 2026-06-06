@@ -12,6 +12,7 @@ interface SidebarProps {
   mode: Mode;
   onModeChange: (mode: Mode) => void;
   onOpenArchive: () => void;
+  onOpenMemory: () => void;
   onDayClick: (timestamp: string) => void;
   calendarRefreshKey: number;
   saveStatus: SaveStatus;
@@ -26,6 +27,7 @@ export default function Sidebar({
   mode,
   onModeChange,
   onOpenArchive,
+  onOpenMemory,
   onDayClick,
   calendarRefreshKey,
   saveStatus,
@@ -146,6 +148,29 @@ export default function Sidebar({
               </div>
             )}
           </div>
+        </div>
+
+        {/* Divider */}
+        <div className="h-px bg-slate-200/60 dark:bg-white/[0.06] mx-2" />
+
+        {/* Memory */}
+        <div>
+          <span className="block text-[10px] font-semibold text-slate-400 dark:text-slate-500
+                           uppercase tracking-widest px-2 mb-2">
+            Memory
+          </span>
+          <button
+            onClick={onOpenMemory}
+            className="w-full text-left text-[13px] rounded-xl px-3 py-2.5
+                       flex items-center gap-2.5 transition-all duration-150
+                       text-slate-600 dark:text-slate-300
+                       hover:bg-white/50 dark:hover:bg-white/[0.06]
+                       border border-transparent
+                       hover:border-slate-200/60 dark:hover:border-white/[0.08]"
+          >
+            <span className="text-base leading-none">🧠</span>
+            <span>What Telmi remembers</span>
+          </button>
         </div>
 
       </div>

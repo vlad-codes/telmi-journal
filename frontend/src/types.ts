@@ -16,7 +16,15 @@ export interface SaveResponse {
   title: string;
   summary: string;
   timestamp: string;
-  profile_update: string | null;
+  new_notes: string[];
+  recent_brief: string | null;
+}
+
+export interface Note {
+  id: string;
+  text: string;
+  source_session: string;
+  created_at: string;
 }
 
 export interface Entry {

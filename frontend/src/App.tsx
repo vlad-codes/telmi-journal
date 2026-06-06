@@ -6,6 +6,7 @@ import type { AppStatus, ChatMessage, Mode } from './types';
 import Sidebar from './components/Sidebar';
 import Chat from './components/Chat';
 import ArchiveModal from './components/ArchiveModal';
+import MemoryPanel from './components/MemoryPanel';
 import Onboarding from './components/Onboarding';
 
 const API = 'http://localhost:8000';
@@ -54,6 +55,8 @@ export default function App() {
   const [sessionKey, setSessionKey] = useState<Record<Mode, number>>({ day: 0, mind: 0 });
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [archiveTimestamp, setArchiveTimestamp] = useState<string | undefined>(undefined);
+  const [memoryOpen, setMemoryOpen] = useState(false);
+  const [memoryRefreshKey, setMemoryRefreshKey] = useState(0);
   const [isDark, setIsDark] = useState(() => localStorage.getItem('theme') === 'dark');
   const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
   const [isReturning, setIsReturning] = useState(() => !!localStorage.getItem('telmi_introduced'));
@@ -151,6 +154,7 @@ export default function App() {
       setSaveStatus('saved');
       setModelStatus('ready');
       setCalendarRefreshKey((k) => k + 1);
+      setMemoryRefreshKey((k) => k + 1);
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       saveTimerRef.current = setTimeout(() => setSaveStatus('idle'), 2500);
       return true;
@@ -200,6 +204,7 @@ export default function App() {
         mode={mode}
         onModeChange={setMode}
         onOpenArchive={() => setArchiveOpen(true)}
+        onOpenMemory={() => setMemoryOpen(true)}
         onDayClick={handleDayClick}
         calendarRefreshKey={calendarRefreshKey}
         saveStatus={saveStatus}
@@ -209,6 +214,12 @@ export default function App() {
         <ArchiveModal
           onClose={handleArchiveClose}
           initialChatTimestamp={archiveTimestamp}
+        />
+      )}
+      {memoryOpen && (
+        <MemoryPanel
+          refreshKey={memoryRefreshKey}
+          onClose={() => setMemoryOpen(false)}
         />
       )}
       {/* Update check button */}

@@ -1,12 +1,13 @@
 import os
 import json
+import uuid
 import ollama
 import chromadb
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 
 
@@ -17,14 +18,21 @@ from pydantic import BaseModel
 _DATA_DIR          = os.environ.get("TELMI_DATA_DIR", ".")
 MEMORY_FILE        = os.path.join(_DATA_DIR, "memory.json")
 PROFILE_FILE       = os.path.join(_DATA_DIR, "profile.json")
+NOTES_FILE         = os.path.join(_DATA_DIR, "notes.json")
+RECENT_BRIEF_FILE  = os.path.join(_DATA_DIR, "recent_brief.txt")
 CHROMA_DIR         = os.path.join(_DATA_DIR, "chroma_db")
 COLLECTION         = "memory"
 EMBED_MODEL        = "nomic-embed-text"
-VECTOR_MIN_ENTRIES = 15
-VECTOR_TOP_K       = 5
 # Cosine distance threshold for /search (0 = identical, 1 = orthogonal, 2 = opposite).
 # nomic-embed-text typically scores relevant hits below 0.50; raise to 0.65 for looser results.
 SEARCH_DISTANCE_THRESHOLD = 0.50
+
+# Notes pipeline tunables
+NOTES_MAX_PER_SESSION   = 3
+NOTES_MAX_LINE_LENGTH   = 200
+NOTES_MIN_LINE_LENGTH   = 10
+NOTE_LINE_PREFIXES      = ("the user", "they ")  # lowercased match
+RECENT_BRIEF_ENTRY_COUNT = 3
 
 
 # ─────────────────────────────────────────────
@@ -33,6 +41,7 @@ SEARCH_DISTANCE_THRESHOLD = 0.50
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    migrate_profile_to_notes()  # one-time legacy migration
     get_collection()  # warm up ChromaDB on startup
     yield
 
@@ -70,7 +79,24 @@ class SaveResponse(BaseModel):
     title: str
     summary: str
     timestamp: str
-    profile_update: str | None = None
+    new_notes: list[str] = []
+    recent_brief: str | None = None
+
+
+class Note(BaseModel):
+    id: str
+    text: str
+    source_session: str
+    created_at: str
+
+
+class UpdateNoteRequest(BaseModel):
+    text: str
+
+
+class RecentBriefResponse(BaseModel):
+    brief: str
+    updated_at: str | None = None
 
 class Entry(BaseModel):
     timestamp: str
@@ -146,36 +172,6 @@ def get_all_entries() -> list[dict]:
     return entries
 
 
-def get_relevant_entries(query: str) -> list[dict]:
-    collection = get_collection()
-    total = collection.count()
-    if total == 0:
-        return []
-
-    if total < VECTOR_MIN_ENTRIES:
-        result = collection.get(include=["documents", "metadatas"])
-        entries = [{"timestamp": m["timestamp"], "summary": d}
-                   for m, d in zip(result["metadatas"], result["documents"])]
-        entries.sort(key=lambda e: e["timestamp"])
-        return entries[-VECTOR_TOP_K:]
-
-    query_embedding = get_embedding(query)
-    if query_embedding is None:
-        result = collection.get(include=["documents", "metadatas"])
-        entries = [{"timestamp": m["timestamp"], "summary": d}
-                   for m, d in zip(result["metadatas"], result["documents"])]
-        entries.sort(key=lambda e: e["timestamp"])
-        return entries[-VECTOR_TOP_K:]
-
-    result = collection.query(
-        query_embeddings=[query_embedding],
-        n_results=min(VECTOR_TOP_K, total),
-        include=["documents", "metadatas", "distances"],
-    )
-    return [{"timestamp": m["timestamp"], "summary": d}
-            for m, d in zip(result["metadatas"][0], result["documents"][0])]
-
-
 def save_entry_to_chroma(timestamp: str, summary: str, title: str) -> bool:
     try:
         collection = get_collection()
@@ -220,130 +216,145 @@ def save_memory_json(entries: list) -> bool:
         return False
 
 
-def load_profile() -> str:
-    if not os.path.exists(PROFILE_FILE):
-        return ""
+def load_notes() -> list[dict]:
+    if not os.path.exists(NOTES_FILE):
+        return []
     try:
-        with open(PROFILE_FILE, "r", encoding="utf-8") as f:
+        with open(NOTES_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
-        return data.get("notes", "")
+        return data.get("notes", [])
     except Exception:
-        return ""
+        return []
 
 
-def save_profile(notes: str) -> bool:
+def save_notes(notes: list[dict]) -> bool:
     try:
-        with open(PROFILE_FILE, "w", encoding="utf-8") as f:
-            json.dump({
-                "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "notes": notes,
-            }, f, ensure_ascii=False, indent=4)
+        with open(NOTES_FILE, "w", encoding="utf-8") as f:
+            json.dump({"notes": notes}, f, ensure_ascii=False, indent=4)
         return True
     except Exception:
         return False
 
 
+def load_recent_brief() -> str:
+    if not os.path.exists(RECENT_BRIEF_FILE):
+        return ""
+    try:
+        with open(RECENT_BRIEF_FILE, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    except Exception:
+        return ""
+
+
+def save_recent_brief(text: str) -> bool:
+    try:
+        with open(RECENT_BRIEF_FILE, "w", encoding="utf-8") as f:
+            f.write(text.strip())
+        return True
+    except Exception:
+        return False
+
+
+def _filter_note_lines(raw: str) -> list[str]:
+    """Keep only lines that look like third-person factual notes."""
+    cleaned: list[str] = []
+    for line in raw.splitlines():
+        line = line.strip().lstrip("-•* ").strip()
+        if not line:
+            continue
+        if not (NOTES_MIN_LINE_LENGTH <= len(line) <= NOTES_MAX_LINE_LENGTH):
+            continue
+        lower = line.lower()
+        if not any(lower.startswith(p) for p in NOTE_LINE_PREFIXES):
+            continue
+        # reject second-person leakage
+        if " you " in lower or lower.startswith("you "):
+            continue
+        cleaned.append(line)
+    return cleaned
+
+
+def _normalize_for_dedup(text: str) -> set[str]:
+    return {w for w in text.lower().split() if len(w) > 3}
+
+
+def _dedup_against_existing(candidates: list[str], existing: list[dict]) -> list[str]:
+    """Drop candidates that significantly overlap with an existing note (token Jaccard ≥ 0.6)."""
+    existing_token_sets = [_normalize_for_dedup(n["text"]) for n in existing]
+    kept: list[str] = []
+    kept_token_sets: list[set[str]] = []
+    for cand in candidates:
+        cand_tokens = _normalize_for_dedup(cand)
+        if not cand_tokens:
+            continue
+        if any(_jaccard(cand_tokens, ex) >= 0.6 for ex in existing_token_sets):
+            continue
+        if any(_jaccard(cand_tokens, kt) >= 0.6 for kt in kept_token_sets):
+            continue
+        kept.append(cand)
+        kept_token_sets.append(cand_tokens)
+    return kept
+
+
+def _jaccard(a: set[str], b: set[str]) -> float:
+    if not a or not b:
+        return 0.0
+    inter = len(a & b)
+    union = len(a | b)
+    return inter / union if union else 0.0
+
+
+def migrate_profile_to_notes() -> None:
+    """One-time migration: split legacy profile.json into individual notes."""
+    if not os.path.exists(PROFILE_FILE):
+        return
+    if os.path.exists(NOTES_FILE):
+        return  # already migrated
+    try:
+        with open(PROFILE_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        legacy = (data.get("notes", "") if isinstance(data, dict) else "").strip()
+    except Exception:
+        legacy = ""
+
+    notes: list[dict] = []
+    if legacy:
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        for chunk in legacy.split("\n\n"):
+            chunk = chunk.strip()
+            if not chunk:
+                continue
+            # strip leading bracket-timestamp markers like "[2026-04-30 12:00:00]"
+            if chunk.startswith("[") and "]" in chunk:
+                chunk = chunk.split("]", 1)[1].strip()
+            if not chunk:
+                continue
+            notes.append({
+                "id": str(uuid.uuid4()),
+                "text": chunk,
+                "source_session": "imported",
+                "created_at": now,
+            })
+
+    save_notes(notes)
+    try:
+        os.rename(PROFILE_FILE, PROFILE_FILE + ".bak")
+    except Exception:
+        pass
+
+
 # ─────────────────────────────────────────────
-# System prompt
+# Notes & recent-brief generation (end-of-session)
 # ─────────────────────────────────────────────
 
-def build_system_prompt(relevant_entries: list[dict], mode: str = "day") -> dict:
-    if relevant_entries:
-        memory_text = "\n\n".join(
-            [f"[{e['timestamp']}]\n{e['summary']}" for e in relevant_entries]
-        )
-    else:
-        memory_text = "No previous conversations on record."
-
-    base = (
-        "You are Telmi — a warm, calm presence who genuinely cares about this person.\n"
-        "You have studied humans. Most people don't need much to live well — usually just clarity, "
-        "or someone who truly listens. You are never alarmed. You always see a way forward.\n"
-        "You are fully on this person's side. You believe in them even when they don't.\n\n"
-        "Always respond in the same language the person is writing in.\n\n"
-        "Rules:\n"
-        "1. Be direct and natural. 2-3 sentences. No filler, no preamble.\n"
-        "2. Never repeat back what the person said. Just respond to it.\n"
-        "3. Maximum one question per response. Often zero.\n"
-        "4. No clinical language. Never \"How does that make you feel?\"\n"
-        "5. Never say \"That sounds really hard\" or \"I can imagine how difficult.\"\n"
-        "6. Never mention being an AI.\n"
-        "7. When someone shares good news: be genuinely interested. Reflect something back about them.\n"
-        "8. When someone struggles: stay calm and steady. You are not worried — you know they can handle it.\n\n"
-    )
-
-    if mode == "day":
-        memory_section = (
-            f"PAST CONVERSATIONS:\n{memory_text}\n"
-            "Only reference this if there is a direct echo in what they just said.\n\n"
-        ) if relevant_entries else ""
-        return {
-            "role": "system",
-            "content": base + memory_section,
-        }
-    else:  # mind
-        profile_text = load_profile()
-        profile_section = f"NOTES ON THIS PERSON:\n{profile_text}\n\n" if profile_text else ""
-        memory_section = (
-            f"PAST SESSIONS:\n{memory_text}\n"
-            "Only reference this if there is a direct echo in what they just said.\n\n"
-        ) if relevant_entries else ""
-        return {
-            "role": "system",
-            "content": (
-                base
-                + "In this mode the person wants to think something through — a decision, a situation, "
-                "something unresolved. Be a thinking partner. Help them get clearer, not just heard. "
-                "Follow their thinking, ask the question that opens the next step, "
-                "and when something useful comes into view, reflect it back gently. "
-                "You are not challenging them — you are thinking alongside them.\n\n"
-                + profile_section
-                + memory_section
-            ),
-        }
-
-
-# ─────────────────────────────────────────────
-# Profile update (mind mode)
-# ─────────────────────────────────────────────
-
-def update_profile_from_session(history_text: str, summary: str, selected_model: str) -> str | None:
-    existing = load_profile()
-    profile_context = (
-        f"EXISTING PROFILE NOTES:\n{existing}\n\n" if existing
-        else "EXISTING PROFILE NOTES: None yet.\n\n"
-    )
+def extract_notes(history_text: str, selected_model: str) -> list[str]:
+    """Run a tiny third-person extraction call. Returns filtered, deduped new notes."""
     prompt = (
-        "You are keeping factual notes about a person based on their journal conversations. "
-        "Your only job is to record what they explicitly said or directly demonstrated — nothing more.\n\n"
-        f"{profile_context}"
-        f"SESSION SUMMARY:\n{summary}\n\n"
-        f"FULL SESSION TRANSCRIPT:\n{history_text}\n\n"
-        "Write down observations from this session that are NOT already in the existing profile.\n\n"
-        "STRICT EVIDENCE RULE:\n"
-        "Every single observation you write must be directly traceable to something the user "
-        "said or did in the transcript above. If you cannot point to a specific line or statement "
-        "that supports it, do not write it. No exceptions.\n\n"
-        "WHAT TO NOTE (only if the user explicitly expressed it):\n"
-        "- Things the user stated as facts about their life, relationships, or situation\n"
-        "- Emotions or reactions the user named themselves\n"
-        "- Patterns or behaviors the user described themselves doing\n"
-        "- Beliefs or values the user expressed in their own words\n"
-        "- Conflicts or tensions the user explicitly mentioned\n\n"
-        "STRICTLY FORBIDDEN:\n"
-        "- Psychological interpretations not stated by the user ('You seem to fear...')\n"
-        "- Inferences about underlying causes, motives, or subconscious patterns\n"
-        "- Assumptions about what the user 'really' feels or believes\n"
-        "- Filling gaps with plausible-sounding psychology\n"
-        "- Anything the user did not say — even if it seems likely\n\n"
-        "FORMAT:\n"
-        "- Write in second person: 'You said...', 'You described...', 'You mentioned...'\n"
-        "- Plain text paragraphs only — no bullet points, no headers\n"
-        "- Only write what is genuinely new — do not repeat anything already in the profile\n"
-        "- If the conversation is too short or too shallow to support any observation "
-        "(e.g. only one or two messages, or only small talk), output exactly: NO_NEW_OBSERVATIONS\n"
-        "- If there is nothing new to record, output exactly: NO_NEW_OBSERVATIONS\n"
-        "- Output only the new notes, no preamble, no labels"
+        "Read this conversation. List 1–3 short sentences about facts the user "
+        "shared about themselves, their life, or their feelings.\n"
+        "Use third person (\"The user said X\", \"They mentioned Y\").\n"
+        "Plain text, one sentence per line. Nothing else.\n\n"
+        f"{history_text}"
     )
     try:
         response = ollama.chat(
@@ -352,11 +363,87 @@ def update_profile_from_session(history_text: str, summary: str, selected_model:
             options={"temperature": 0.2},
         )
         raw = response["message"]["content"].strip()
-        if not raw or raw == "NO_NEW_OBSERVATIONS":
-            return None
-        return raw
     except Exception:
-        return None
+        return []
+
+    candidates = _filter_note_lines(raw)
+    if not candidates:
+        return []
+
+    existing = load_notes()
+    new = _dedup_against_existing(candidates, existing)
+    return new[:NOTES_MAX_PER_SESSION]
+
+
+def regenerate_recent_brief(selected_model: str) -> str:
+    """Regenerate the short third-person brief from the last N entries."""
+    entries = load_memory_json()
+    valid = [e for e in entries if e.get("timestamp") and e["timestamp"] != "Archive (legacy)"]
+    if not valid:
+        return ""
+
+    recent = valid[-RECENT_BRIEF_ENTRY_COUNT:]
+    bundle = "\n\n".join(
+        f"[{e['timestamp']}]\n{e.get('summary', '')}" for e in recent
+    )
+
+    prompt = (
+        "Read these recent journal entries. Write 2–3 sentences in third person "
+        "summarizing where this person is right now: their current situation, "
+        "what's been on their mind. Plain prose, no bullet points, no headers.\n\n"
+        f"{bundle}"
+    )
+    try:
+        response = ollama.chat(
+            model=selected_model,
+            messages=[{"role": "user", "content": prompt}],
+            options={"temperature": 0.3},
+        )
+        brief = response["message"]["content"].strip()
+    except Exception:
+        return load_recent_brief()  # keep previous on failure
+
+    # Light sanity: drop if too long, keep previous
+    if len(brief) > 600 or not brief:
+        return load_recent_brief()
+    return brief
+
+
+# ─────────────────────────────────────────────
+# System prompt
+# ─────────────────────────────────────────────
+
+def build_system_prompt() -> dict:
+    """Compose the per-session system message from notes + recent_brief.
+
+    Stable for the entire session: composed once per /chat call from local files,
+    no LLM calls, no embedding lookups, no per-message variation.
+    """
+    persona = (
+        "You are Telmi. The person writing to you trusts you.\n"
+        "Be brief: 2–3 sentences. No filler, no preamble.\n"
+        "Don't perform empathy. Don't ask reflexive follow-up questions.\n"
+        "Don't mention being an AI. Maximum one question per response, often zero.\n"
+        "Reply in the user's language."
+    )
+
+    parts: list[str] = [persona]
+
+    brief = load_recent_brief()
+    if brief:
+        parts.append(f"RECENT CONTEXT:\n{brief}")
+
+    notes = load_notes()
+    if notes:
+        bullets = "\n".join(f"- {n['text']}" for n in notes)
+        parts.append(
+            "BACKGROUND ABOUT THE USER (read-only notes — do not address them about these):\n"
+            f"{bullets}"
+        )
+
+    parts.append(f"Today is {date.today().isoformat()}.")
+
+    return {"role": "system", "content": "\n\n".join(parts)}
 
 
 # ─────────────────────────────────────────────
@@ -406,8 +493,7 @@ def pull_model(model: str = Query(...)):
 
 @app.post("/chat")
 def chat(request: ChatRequest):
-    relevant         = get_relevant_entries(request.user_input)
-    system_prompt    = build_system_prompt(relevant, request.mode)
+    system_prompt    = build_system_prompt()
     messages_for_llm = [system_prompt] + [m.model_dump() for m in request.history]
 
     def generate():
@@ -493,24 +579,39 @@ def save_session(request: SaveRequest):
         })
         save_memory_json(entries)
 
-        profile_update = None
-        if request.mode == "mind":
-            new_observations = update_profile_from_session(
-                history_text, summary, request.selected_model
-            )
-            if new_observations:
-                existing = load_profile()
-                ts       = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                updated  = (existing + f"\n\n[{ts}]\n" + new_observations
-                            if existing else new_observations)
-                save_profile(updated)
-                profile_update = new_observations
+        # Independent post-save calls. Each is best-effort: if it fails,
+        # the saved entry still stands.
+        new_note_texts: list[str] = []
+        try:
+            new_note_texts = extract_notes(history_text, request.selected_model)
+            if new_note_texts:
+                notes = load_notes()
+                created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                for text in new_note_texts:
+                    notes.append({
+                        "id": str(uuid.uuid4()),
+                        "text": text,
+                        "source_session": timestamp,
+                        "created_at": created_at,
+                    })
+                save_notes(notes)
+        except Exception:
+            pass
+
+        new_brief: str | None = None
+        try:
+            new_brief = regenerate_recent_brief(request.selected_model)
+            if new_brief:
+                save_recent_brief(new_brief)
+        except Exception:
+            pass
 
         return SaveResponse(
             title=title,
             summary=summary,
             timestamp=timestamp,
-            profile_update=profile_update,
+            new_notes=new_note_texts,
+            recent_brief=new_brief,
         )
 
     except HTTPException:
@@ -669,6 +770,49 @@ def get_entry_chat(timestamp: str):
                 raise HTTPException(status_code=404, detail="No chat history stored for this entry.")
             return [ChatMessage(**m) for m in history]
     raise HTTPException(status_code=404, detail="Entry not found.")
+
+
+@app.get("/notes", response_model=list[Note])
+def list_notes():
+    return [Note(**n) for n in load_notes()]
+
+
+@app.put("/notes/{note_id}", response_model=Note)
+def update_note(note_id: str, request: UpdateNoteRequest):
+    notes = load_notes()
+    for n in notes:
+        if n["id"] == note_id:
+            n["text"] = request.text.strip()
+            save_notes(notes)
+            return Note(**n)
+    raise HTTPException(status_code=404, detail="Note not found")
+
+
+@app.delete("/notes/{note_id}")
+def delete_note(note_id: str):
+    notes = load_notes()
+    filtered = [n for n in notes if n["id"] != note_id]
+    if len(filtered) == len(notes):
+        raise HTTPException(status_code=404, detail="Note not found")
+    save_notes(filtered)
+    return {"deleted": note_id}
+
+
+@app.delete("/notes")
+def clear_notes():
+    save_notes([])
+    return {"cleared": True}
+
+
+@app.get("/recent-brief", response_class=PlainTextResponse)
+def get_recent_brief():
+    return load_recent_brief()
+
+
+@app.delete("/recent-brief")
+def clear_recent_brief():
+    save_recent_brief("")
+    return {"cleared": True}
 
 
 @app.delete("/entries/{timestamp}")
