@@ -7,6 +7,7 @@ import Sidebar from './components/Sidebar';
 import Chat from './components/Chat';
 import ArchiveModal from './components/ArchiveModal';
 import MemoryPanel from './components/MemoryPanel';
+import SettingsModal from './components/SettingsModal';
 import Onboarding from './components/Onboarding';
 
 const API = 'http://localhost:8000';
@@ -57,6 +58,7 @@ export default function App() {
   const [archiveTimestamp, setArchiveTimestamp] = useState<string | undefined>(undefined);
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [memoryRefreshKey, setMemoryRefreshKey] = useState(0);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [isDark, setIsDark] = useState(() => localStorage.getItem('theme') === 'dark');
   const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
   const [isReturning, setIsReturning] = useState(() => !!localStorage.getItem('telmi_introduced'));
@@ -205,6 +207,7 @@ export default function App() {
         onModeChange={setMode}
         onOpenArchive={() => setArchiveOpen(true)}
         onOpenMemory={() => setMemoryOpen(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
         onDayClick={handleDayClick}
         calendarRefreshKey={calendarRefreshKey}
         saveStatus={saveStatus}
@@ -221,6 +224,9 @@ export default function App() {
           refreshKey={memoryRefreshKey}
           onClose={() => setMemoryOpen(false)}
         />
+      )}
+      {settingsOpen && (
+        <SettingsModal onClose={() => setSettingsOpen(false)} />
       )}
       {/* Update check button */}
       <div className="fixed top-[9px] right-14 z-20 flex items-center">
