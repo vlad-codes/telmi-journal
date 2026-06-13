@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
-import type { AppStatus, ChatMessage, Mode } from './types';
+import type { AppStatus, ChatMessage } from './types';
 import Sidebar from './components/Sidebar';
 import Chat from './components/Chat';
 import ArchiveModal from './components/ArchiveModal';
@@ -51,9 +51,8 @@ export default function App() {
   const [appStatus, setAppStatus] = useState<AppStatus>('loading');
   const [models, setModels] = useState<string[]>([]);
   const [selectedModel, setSelectedModel] = useState('');
-  const [mode, setMode] = useState<Mode>('day');
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
-  const [sessionKey, setSessionKey] = useState<Record<Mode, number>>({ day: 0, mind: 0 });
+  const [sessionKey, setSessionKey] = useState(0);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [archiveTimestamp, setArchiveTimestamp] = useState<string | undefined>(undefined);
   const [memoryOpen, setMemoryOpen] = useState(false);
@@ -71,8 +70,8 @@ export default function App() {
     localStorage.setItem('theme', isDark ? 'dark' : 'light');
   }, [isDark]);
 
-  const historyRef = useRef<Record<Mode, ChatMessage[]>>({ day: [], mind: [] });
-  const savedRef = useRef<Record<Mode, boolean>>({ day: false, mind: false });
+  const historyRef = useRef<ChatMessage[]>([]);
+  const savedRef = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -109,7 +108,7 @@ export default function App() {
     return () => { cancelled = true; };
   }, [appStatus]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Tauri close handler — auto-save all modes with unsaved history
+  // Tauri close handler — auto-save unsaved history
   useEffect(() => {
     if (appStatus !== 'ready') return;
     const win = getCurrentWindow();
@@ -118,12 +117,9 @@ export default function App() {
     win.onCloseRequested(async (event) => {
       event.preventDefault();
       try {
-        const modes: Mode[] = ['day', 'mind'];
-        for (const m of modes) {
-          const h = historyRef.current[m];
-          if (!savedRef.current[m] && h.length > 1) {
-            await doSave(m, h);
-          }
+        const h = historyRef.current;
+        if (!savedRef.current && h.length > 1) {
+          await doSave(h);
         }
       } catch {}
       await invoke('quit_app');
@@ -139,7 +135,7 @@ export default function App() {
     switchingTimerRef.current = setTimeout(() => setModelStatus('ready'), 2000);
   }
 
-  async function doSave(m: Mode, history: ChatMessage[]): Promise<boolean> {
+  async function doSave(history: ChatMessage[]): Promise<boolean> {
     if (history.length <= 1) return false;
     setSaveStatus('saving');
     setModelStatus('saving');
@@ -147,10 +143,10 @@ export default function App() {
       const res = await fetch(`${API}/save`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: m, history, selected_model: selectedModel }),
+        body: JSON.stringify({ mode: 'day', history, selected_model: selectedModel }),
       });
       if (!res.ok) throw new Error('save failed');
-      savedRef.current[m] = true;
+      savedRef.current = true;
       localStorage.setItem('telmi_introduced', '1');
       setIsReturning(true);
       setSaveStatus('saved');
@@ -167,19 +163,19 @@ export default function App() {
     }
   }
 
-  function handleHistoryChange(m: Mode, history: ChatMessage[]) {
-    historyRef.current[m] = history;
-    savedRef.current[m] = false;
+  function handleHistoryChange(history: ChatMessage[]) {
+    historyRef.current = history;
+    savedRef.current = false;
   }
 
   async function handleNewSession() {
-    const history = historyRef.current[mode];
-    if (!savedRef.current[mode] && history.length > 1) {
-      await doSave(mode, history);
+    const history = historyRef.current;
+    if (!savedRef.current && history.length > 1) {
+      await doSave(history);
     }
-    savedRef.current[mode] = false;
-    historyRef.current[mode] = [];
-    setSessionKey((prev) => ({ ...prev, [mode]: prev[mode] + 1 }));
+    savedRef.current = false;
+    historyRef.current = [];
+    setSessionKey((k) => k + 1);
   }
 
   function handleDayClick(timestamp: string) {
@@ -203,8 +199,6 @@ export default function App() {
         selectedModel={selectedModel}
         onModelChange={handleModelChange}
         modelStatus={modelStatus}
-        mode={mode}
-        onModeChange={setMode}
         onOpenArchive={() => setArchiveOpen(true)}
         onOpenMemory={() => setMemoryOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
@@ -311,11 +305,10 @@ export default function App() {
       </button>
       <main className="flex-1 overflow-hidden chat-bg">
         <Chat
-          key={`${mode}-${sessionKey[mode]}`}
-          mode={mode}
+          key={sessionKey}
           selectedModel={selectedModel}
           isReturning={isReturning}
-          onHistoryChange={(h) => handleHistoryChange(mode, h)}
+          onHistoryChange={handleHistoryChange}
         />
       </main>
     </div>

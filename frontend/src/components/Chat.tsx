@@ -1,34 +1,25 @@
 import { useEffect, useRef, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { KeyboardEvent } from 'react';
-import type { ChatMessage, Mode } from '../types';
+import type { ChatMessage } from '../types';
 import ChatMessageBubble from './ChatMessage';
 const API = 'http://localhost:8000';
 
-const INTRO_FIRST: Record<Mode, string> = {
-  day: "Hey. I'm Telmi.\n\nTell me what's been going on. Whatever's on your mind — I'm here.",
-  mind: "Hey. I'm Telmi.\n\nBring me something you haven't quite worked out. A situation, a decision, something you keep circling. We'll look at it together.",
-};
-
-const INTRO_RETURNING: Record<Mode, string> = {
-  day: "Hey. What's been going on?",
-  mind: "What are you trying to figure out?",
-};
+const INTRO_FIRST = "Hey. I'm Telmi.\n\nTell me what's been going on. Whatever's on your mind — I'm here.";
+const INTRO_RETURNING = "Hey. What's been going on?";
 
 interface ChatProps {
-  mode: Mode;
   selectedModel: string;
   isReturning: boolean;
   onHistoryChange: (history: ChatMessage[]) => void;
 }
 
 export default function Chat({
-  mode,
   selectedModel,
   isReturning,
   onHistoryChange,
 }: ChatProps) {
-  const intro = isReturning ? INTRO_RETURNING[mode] : INTRO_FIRST[mode];
+  const intro = isReturning ? INTRO_RETURNING : INTRO_FIRST;
   const initialHistory: ChatMessage[] = [{ role: 'assistant', content: intro }];
   const [history, setHistory] = useState<ChatMessage[]>(initialHistory);
   const [input, setInput] = useState('');
@@ -70,7 +61,7 @@ export default function Chat({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_input: userMsg.content,
-          mode,
+          mode: 'day',
           history: nextHistory,
           selected_model: selectedModel,
         }),
@@ -120,8 +111,8 @@ export default function Chat({
     e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
   }
 
-  const modeLabel = mode === 'day' ? 'Your Day' : 'Your Mind';
-  const modeIcon = mode === 'day' ? '📓' : '💭';
+  const modeLabel = 'Your Day';
+  const modeIcon = '📓';
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -187,7 +178,7 @@ export default function Chat({
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
               disabled={isStreaming}
-              placeholder={mode === 'day' ? 'How was your day?' : "What's on your mind?"}
+              placeholder="How was your day?"
               className="flex-1 resize-none bg-transparent text-[14px]
                          text-slate-800 dark:text-slate-100
                          placeholder-slate-400 dark:placeholder-slate-500

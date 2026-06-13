@@ -1,5 +1,3 @@
-export type Mode = 'day' | 'mind';
-
 export type AppStatus =
   | 'loading'
   | 'no-ollama'

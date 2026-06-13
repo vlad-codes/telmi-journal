@@ -1,6 +1,10 @@
 # Persönliche Daten
 memory.json
 profile.json
+profile.json.bak
+notes.json
+recent_brief.txt
+character_prompt.txt
 chroma_db/
 
 # PyInstaller Build-Artefakte
