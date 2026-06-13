@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Telmi — Your private AI companion</title>
+  <meta name="description" content="Tell your day. Telmi listens, and remembers. A fully local, private AI journaling companion for macOS. No cloud. No subscription. No one reading your diary." />
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Telmi — Your private AI companion" />
+  <meta property="og:description" content="Tell your day. Telmi listens, and remembers. Fully local, private, on your Mac." />
+  <meta property="og:type" content="website" />
+
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <!-- ─── Nav ──────────────────────────────────────────────────────────── -->
+  <header class="nav">
+    <a class="nav__brand" href="#top">
+      <img src="./assets/logo.svg" alt="" width="26" height="25" />
+      <span>Telmi</span>
+    </a>
+    <nav class="nav__links">
+      <a href="#how">How it works</a>
+      <a href="#features">Features</a>
+      <a href="https://github.com/vlad-codes/telmi-journal" target="_blank" rel="noopener">GitHub</a>
+      <a class="btn btn--ghost" href="#download">Download</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <!-- ─── Hero + live demo ──────────────────────────────────────────── -->
+    <section class="hero">
+      <div class="hero__copy">
+        <h1 class="hero__title">Tell your day.<br />Telmi listens, and remembers.</h1>
+        <p class="hero__sub">
+          A fully local AI companion for your Mac. Say whatever's on your mind —
+          Telmi remembers what matters, and never sends a single word to a server.
+        </p>
+        <div class="hero__cta">
+          <a class="btn btn--primary" href="#download">Download for macOS</a>
+          <span class="hero__meta">Free · Local · Apple Silicon</span>
+        </div>
+      </div>
+
+      <!-- Faked, self-animating Telmi conversation -->
+      <div class="demo" aria-hidden="true">
+        <div class="demo__window">
+          <div class="demo__chrome">
+            <span class="demo__dot"></span><span class="demo__dot"></span><span class="demo__dot"></span>
+          </div>
+          <div class="demo__chat" id="demo-chat" data-demo></div>
+        </div>
+        <!-- Memory card slides in when Telmi "remembers" -->
+        <div class="memory-card" id="memory-card">
+          <div class="memory-card__label">
+            <img src="./assets/logo.svg" alt="" width="14" height="13" />
+            Telmi remembers
+          </div>
+          <p class="memory-card__note" id="memory-note"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── The "it remembers you" moment ─────────────────────────────── -->
+    <section class="quiet" id="how">
+      <p class="quiet__lead">
+        Open Telmi and just start talking. One calm, focused conversation.
+      </p>
+      <p class="quiet__body">
+        Telmi replies briefly and naturally, then quietly keeps notes on the
+        things worth remembering. Next time you open it, it already knows you.
+      </p>
+    </section>
+
+    <!-- ─── Feature stations (real screenshots) ───────────────────────── -->
+    <section class="features" id="features">
+      <article class="feature">
+        <div class="feature__text">
+          <h2>Your day, in one place</h2>
+          <p>No save button, no friction. Open the app and talk. Telmi auto-saves every conversation.</p>
+        </div>
+        <a class="feature__shot" href="./assets/screenshots/yourday_chat.png" target="_blank" rel="noopener">
+          <img src="./assets/screenshots/yourday_chat.png" alt="Telmi conversation view" loading="lazy" />
+        </a>
+      </article>
+
+      <article class="feature feature--reverse">
+        <div class="feature__text">
+          <h2>You control the memory</h2>
+          <p>A built-in panel lets you read, edit, or delete every note Telmi keeps. Nothing is hidden.</p>
+        </div>
+        <a class="feature__shot" href="./assets/screenshots/memory_panel.png" target="_blank" rel="noopener">
+          <img src="./assets/screenshots/memory_panel.png" alt="What Telmi remembers panel" loading="lazy" />
+        </a>
+      </article>
+
+      <article class="feature">
+        <div class="feature__text">
+          <h2>A year of you</h2>
+          <p>A calendar of every day you've talked, your streaks, and monthly stats — built into the sidebar.</p>
+        </div>
+        <a class="feature__shot" href="./assets/screenshots/dashboard.png" target="_blank" rel="noopener">
+          <img src="./assets/screenshots/dashboard.png" alt="Life dashboard" loading="lazy" />
+        </a>
+      </article>
+
+      <article class="feature feature--reverse">
+        <div class="feature__text">
+          <h2>Search everything</h2>
+          <p>Browse and full-text or semantic-search every past conversation, instantly.</p>
+        </div>
+        <a class="feature__shot" href="./assets/screenshots/archive_search.png" target="_blank" rel="noopener">
+          <img src="./assets/screenshots/archive_search.png" alt="Archive and search" loading="lazy" />
+        </a>
+      </article>
+    </section>
+
+    <!-- ─── Why it's different ─────────────────────────────────────────── -->
+    <section class="pillars">
+      <div class="pillar">
+        <h3>Fully local</h3>
+        <p>Everything runs on your Mac through Ollama. Not a single word ever leaves your machine.</p>
+      </div>
+      <div class="pillar">
+        <h3>No subscription</h3>
+        <p>No account, no API key, no usage limits. You own the models, and you own the data.</p>
+      </div>
+      <div class="pillar">
+        <h3>Runs on 8 GB</h3>
+        <p>No GPU, no special hardware. It works on the Mac you already have.</p>
+      </div>
+    </section>
+
+    <!-- ─── Download ───────────────────────────────────────────────────── -->
+    <section class="download" id="download">
+      <h2>Start telling your day.</h2>
+      <p>Download the <code>.dmg</code>, drag Telmi to Applications, install Ollama. That's it.</p>
+      <a class="btn btn--primary btn--lg" href="https://github.com/vlad-codes/telmi-journal/releases/latest" target="_blank" rel="noopener">
+        Download for macOS
+      </a>
+      <p class="download__note">macOS only · Apple Silicon (M1 and later)</p>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span>Your thoughts stay on your machine.</span>
+    <a href="https://github.com/vlad-codes/telmi-journal" target="_blank" rel="noopener">Open source on GitHub</a>
+  </footer>
+
+  <script src="./demo.js" defer></script>
+</body>
+</html>
