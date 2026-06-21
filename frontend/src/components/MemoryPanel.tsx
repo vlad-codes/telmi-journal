@@ -62,9 +62,13 @@ export default function MemoryPanel({ refreshKey, onClose }: MemoryPanelProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-30 flex items-center justify-center
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-30 flex items-center justify-center
                     bg-black/30 dark:bg-black/50 backdrop-blur-sm">
-      <div className="w-full max-w-xl max-h-[80vh] flex flex-col
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-xl max-h-[80vh] flex flex-col
                       bg-white dark:bg-slate-900
                       border border-slate-200 dark:border-white/10
                       rounded-2xl shadow-xl">

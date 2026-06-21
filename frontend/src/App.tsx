@@ -211,6 +211,7 @@ export default function App() {
         <ArchiveModal
           onClose={handleArchiveClose}
           initialChatTimestamp={archiveTimestamp}
+          onDataChange={() => setCalendarRefreshKey((k) => k + 1)}
         />
       )}
       {memoryOpen && (

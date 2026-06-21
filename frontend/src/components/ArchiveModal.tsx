@@ -7,9 +7,10 @@ const USE_VECTOR_SEARCH_THRESHOLD = 15;
 interface Props {
   onClose: () => void;
   initialChatTimestamp?: string;
+  onDataChange?: () => void;
 }
 
-export default function ArchiveModal({ onClose, initialChatTimestamp }: Props) {
+export default function ArchiveModal({ onClose, initialChatTimestamp, onDataChange }: Props) {
   const [allEntries, setAllEntries] = useState<Entry[]>([]);
   const [displayedEntries, setDisplayedEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -148,6 +149,7 @@ export default function ArchiveModal({ onClose, initialChatTimestamp }: Props) {
       setDisplayedEntries((prev) => prev.map((e) => (e.timestamp === entry.timestamp ? updated : e)));
       setEditingTimestamp(null);
       setEditDraft('');
+      onDataChange?.();
     } catch {
       alert('Save failed. Please try again.');
     } finally {
@@ -167,6 +169,7 @@ export default function ArchiveModal({ onClose, initialChatTimestamp }: Props) {
       if (openTimestamp === ts) setOpenTimestamp(null);
       if (editingTimestamp === ts) setEditingTimestamp(null);
       if (chatTimestamp === ts) { setChatTimestamp(null); setChatMessages([]); }
+      onDataChange?.();
     } catch {
       // show error inline — no alert() since it's blocked in Tauri/WKWebView
       setError('Delete failed. Please try again.');
