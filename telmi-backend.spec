@@ -3,27 +3,10 @@ from PyInstaller.utils.hooks import collect_all
 
 datas = []
 binaries = []
-hiddenimports = [
-    'uvicorn.logging',
-    'uvicorn.loops',
-    'uvicorn.loops.auto',
-    'uvicorn.protocols',
-    'uvicorn.protocols.http',
-    'uvicorn.protocols.http.auto',
-    'uvicorn.protocols.websockets',
-    'uvicorn.protocols.websockets.auto',
-    'uvicorn.lifespan',
-    'uvicorn.lifespan.on',
-    'chromadb.api.types',
-    'chromadb.db.impl.sqlite',
-    'chromadb.segment.impl.vector.local_persistent_hnsw',
-    'chromadb.segment.impl.metadata.sqlite',
-    'chromadb.migrations',
-]
+hiddenimports = ['uvicorn.logging', 'uvicorn.loops', 'uvicorn.loops.auto', 'uvicorn.protocols', 'uvicorn.protocols.http', 'uvicorn.protocols.http.auto', 'uvicorn.protocols.websockets', 'uvicorn.protocols.websockets.auto', 'uvicorn.lifespan', 'uvicorn.lifespan.on', 'chromadb.api.types', 'chromadb.db.impl.sqlite', 'chromadb.segment.impl.vector.local_persistent_hnsw', 'chromadb.segment.impl.metadata.sqlite', 'chromadb.migrations']
 tmp_ret = collect_all('chromadb')
-datas += tmp_ret[0]
-binaries += tmp_ret[1]
-hiddenimports += tmp_ret[2]
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+
 
 a = Analysis(
     ['api.py'],

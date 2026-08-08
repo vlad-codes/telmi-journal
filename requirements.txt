@@ -1,6 +1,4 @@
 streamlit
-ollama>=0.6.1
+ollama
 chromadb
 pyyaml
-fastapi
-uvicorn[standard]

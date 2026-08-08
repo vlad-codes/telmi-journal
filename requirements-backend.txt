@@ -1,0 +1,14 @@
+# Runtime deps for the bundled FastAPI backend (api.py) that Tauri ships as a
+# sidecar. Pinned to the versions that produced the working macOS build so the
+# Windows build stays reproducible. NOTE: requirements.txt is for the legacy
+# Streamlit UI (telmi.py); this file is what the packaged app actually needs.
+fastapi==0.136.0
+starlette==1.0.0
+uvicorn==0.45.0
+pydantic==2.13.2
+ollama==0.6.1
+chromadb==1.5.8
+PyYAML==6.0.3
+
+# Packaging
+pyinstaller==6.20.0
