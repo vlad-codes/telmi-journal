@@ -10,12 +10,14 @@ const INTRO_RETURNING = "Hey. What's been going on?";
 
 interface ChatProps {
   selectedModel: string;
+  think: boolean;
   isReturning: boolean;
   onHistoryChange: (history: ChatMessage[]) => void;
 }
 
 export default function Chat({
   selectedModel,
+  think,
   isReturning,
   onHistoryChange,
 }: ChatProps) {
@@ -64,6 +66,7 @@ export default function Chat({
           mode: 'day',
           history: nextHistory,
           selected_model: selectedModel,
+          think,
         }),
         signal: abortRef.current.signal,
       });
@@ -72,17 +75,37 @@ export default function Chat({
 
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
-      let accumulated = '';
+      let buffer = '';
+      let content = '';
+      let thinking = '';
+
+      // Each line is one NDJSON delta: {type: 'thinking'|'content'|'error', text}
+      const applyLine = (line: string) => {
+        const trimmed = line.trim();
+        if (!trimmed) return;
+        let evt: { type?: string; text?: string };
+        try {
+          evt = JSON.parse(trimmed);
+        } catch {
+          // Fallback for any non-JSON chunk: treat as answer text
+          content += trimmed;
+          setHistory((h) => [...h.slice(0, -1), { role: 'assistant', content, thinking }]);
+          return;
+        }
+        if (evt.type === 'thinking') thinking += evt.text ?? '';
+        else content += evt.text ?? ''; // 'content' and 'error' both render inline
+        setHistory((h) => [...h.slice(0, -1), { role: 'assistant', content, thinking }]);
+      };
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        accumulated += decoder.decode(value, { stream: true });
-        setHistory((h) => [
-          ...h.slice(0, -1),
-          { role: 'assistant', content: accumulated },
-        ]);
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? ''; // keep the trailing partial line
+        for (const line of lines) applyLine(line);
       }
+      if (buffer) applyLine(buffer);
     } catch (err: unknown) {
       if (err instanceof Error && err.name === 'AbortError') return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -141,6 +164,7 @@ export default function Chat({
                 key={i}
                 message={msg}
                 isStreaming={isStreamingThis}
+                thinkingMode={think}
               />
             );
           })}

@@ -90,7 +90,9 @@ export default function LifeDashboard({ onDayClick, onOpenArchive, refreshKey }:
             if (!cancelled) setStats(data as StatsData);
             return;
           }
-        } catch {}
+        } catch {
+          // Retry below; the dashboard remains usable with cached values.
+        }
         await new Promise((res) => setTimeout(res, 800));
       }
     }
@@ -133,7 +135,9 @@ export default function LifeDashboard({ onDayClick, onOpenArchive, refreshKey }:
             if (!cancelled && Array.isArray(data)) setCalDays(data as CalendarDay[]);
             return;
           }
-        } catch {}
+        } catch {
+          // Retry below; a transient backend startup delay is expected.
+        }
         await new Promise((res) => setTimeout(res, 1000));
       }
     }

@@ -33,7 +33,10 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    # The sidecar is already a compressed one-file archive. Avoid an extra
+    # executable-packing layer so release binaries are easier to validate and
+    # less likely to be blocked or modified by Windows security tooling.
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
     console=True,

@@ -8,6 +8,9 @@ interface SidebarProps {
   selectedModel: string;
   onModelChange: (model: string) => void;
   modelStatus: ModelStatus;
+  supportsThinking: boolean;
+  thinkEnabled: boolean;
+  onThinkChange: (enabled: boolean) => void;
   onOpenArchive: () => void;
   onOpenMemory: () => void;
   onOpenSettings: () => void;
@@ -22,6 +25,9 @@ export default function Sidebar({
   selectedModel,
   onModelChange,
   modelStatus,
+  supportsThinking,
+  thinkEnabled,
+  onThinkChange,
   onOpenArchive,
   onOpenMemory,
   onOpenSettings,
@@ -122,6 +128,40 @@ export default function Sidebar({
               )}
             </div>
           </div>
+
+          {/* Thinking toggle — only for reasoning-capable models */}
+          {supportsThinking && (
+            <button
+              type="button"
+              role="switch"
+              aria-checked={thinkEnabled}
+              onClick={() => onThinkChange(!thinkEnabled)}
+              title="Let the model reason before answering. More thoughtful, but slower."
+              className="mt-2 w-full flex items-center justify-between gap-2
+                         rounded-xl px-3 py-1.5 text-[12px]
+                         bg-white/50 dark:bg-white/[0.04]
+                         border border-slate-200/70 dark:border-white/[0.07]
+                         hover:bg-white/80 dark:hover:bg-white/[0.07]
+                         transition-all duration-150"
+            >
+              <span className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
+                <span className="text-[13px] leading-none">💭</span>
+                Thinking
+              </span>
+              <span
+                className={`relative w-8 h-[18px] rounded-full shrink-0 transition-colors duration-200
+                            ${thinkEnabled
+                              ? 'bg-indigo-500 dark:bg-indigo-500'
+                              : 'bg-slate-300 dark:bg-slate-600'}`}
+              >
+                <span
+                  className={`absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white
+                              shadow-sm transition-all duration-200
+                              ${thinkEnabled ? 'left-[16px]' : 'left-[2px]'}`}
+                />
+              </span>
+            </button>
+          )}
         </div>
 
         {/* Memory / Prompt + New conversation */}

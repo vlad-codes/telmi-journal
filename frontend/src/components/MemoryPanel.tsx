@@ -29,11 +29,15 @@ export default function MemoryPanel({ refreshKey, onClose }: MemoryPanelProps) {
     }
   }
 
-  useEffect(() => { load(); }, [refreshKey]);
+  useEffect(() => {
+    // Loading is the intended synchronization whenever persisted memory changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    load();
+  }, [refreshKey]);
 
   async function deleteNote(id: string) {
-    await fetch(`${API}/notes/${id}`, { method: 'DELETE' });
-    setNotes((ns) => ns.filter((n) => n.id !== id));
+    const res = await fetch(`${API}/notes/${id}`, { method: 'DELETE' });
+    if (res.ok) setNotes((ns) => ns.filter((n) => n.id !== id));
   }
 
   async function saveEdit(id: string) {
@@ -53,12 +57,12 @@ export default function MemoryPanel({ refreshKey, onClose }: MemoryPanelProps) {
 
   async function clearAll() {
     if (!confirm('Delete all notes and the recent brief?')) return;
-    await Promise.all([
+    const responses = await Promise.all([
       fetch(`${API}/notes`, { method: 'DELETE' }),
       fetch(`${API}/recent-brief`, { method: 'DELETE' }),
     ]);
-    setNotes([]);
-    setBrief('');
+    if (responses[0].ok) setNotes([]);
+    if (responses[1].ok) setBrief('');
   }
 
   return (

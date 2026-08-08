@@ -62,8 +62,14 @@ export default function App() {
   const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
   const [isReturning, setIsReturning] = useState(() => !!localStorage.getItem('telmi_introduced'));
   const [modelStatus, setModelStatus] = useState<ModelStatus>('ready');
+  const [modelSupportsThinking, setModelSupportsThinking] = useState(false);
+  const [thinkEnabled, setThinkEnabled] = useState(() => localStorage.getItem('telmi_think') === '1');
   const switchingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const update = useUpdateCheck();
+
+  // Whether the current message should actually be sent with thinking on:
+  // the model must support it AND the user must have the toggle enabled.
+  const effectiveThink = modelSupportsThinking && thinkEnabled;
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDark);
@@ -106,7 +112,7 @@ export default function App() {
 
     poll();
     return () => { cancelled = true; };
-  }, [appStatus]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [appStatus]);
 
   // Tauri close handler — auto-save unsaved history
   useEffect(() => {
@@ -119,9 +125,13 @@ export default function App() {
       try {
         const h = historyRef.current;
         if (!savedRef.current && h.length > 1) {
-          await doSave(h);
+          const saved = await doSave(h);
+          if (!saved) return;
         }
-      } catch {}
+      } catch {
+        setSaveStatus('error');
+        return;
+      }
       await invoke('quit_app');
     }).then((fn) => { unlistenFn = fn; });
 
@@ -134,6 +144,30 @@ export default function App() {
     if (switchingTimerRef.current) clearTimeout(switchingTimerRef.current);
     switchingTimerRef.current = setTimeout(() => setModelStatus('ready'), 2000);
   }
+
+  function handleThinkChange(enabled: boolean) {
+    setThinkEnabled(enabled);
+    localStorage.setItem('telmi_think', enabled ? '1' : '0');
+  }
+
+  // Detect whether the selected model supports a thinking/reasoning mode so we
+  // can show the Thinking toggle. The remembered toggle preference is kept
+  // across model switches; it just has no effect on models that can't think.
+  useEffect(() => {
+    if (!selectedModel) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`${API}/model-info?model=${encodeURIComponent(selectedModel)}`);
+        if (!r.ok) throw new Error('not ok');
+        const info: { supports_thinking?: boolean } = await r.json();
+        if (!cancelled) setModelSupportsThinking(!!info.supports_thinking);
+      } catch {
+        if (!cancelled) setModelSupportsThinking(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedModel]);
 
   async function doSave(history: ChatMessage[]): Promise<boolean> {
     if (history.length <= 1) return false;
@@ -171,7 +205,8 @@ export default function App() {
   async function handleNewSession() {
     const history = historyRef.current;
     if (!savedRef.current && history.length > 1) {
-      await doSave(history);
+      const saved = await doSave(history);
+      if (!saved) return;
     }
     savedRef.current = false;
     historyRef.current = [];
@@ -199,6 +234,9 @@ export default function App() {
         selectedModel={selectedModel}
         onModelChange={handleModelChange}
         modelStatus={modelStatus}
+        supportsThinking={modelSupportsThinking}
+        thinkEnabled={thinkEnabled}
+        onThinkChange={handleThinkChange}
         onOpenArchive={() => setArchiveOpen(true)}
         onOpenMemory={() => setMemoryOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
@@ -308,6 +346,7 @@ export default function App() {
         <Chat
           key={sessionKey}
           selectedModel={selectedModel}
+          think={effectiveThink}
           isReturning={isReturning}
           onHistoryChange={handleHistoryChange}
         />
