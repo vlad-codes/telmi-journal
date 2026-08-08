@@ -24,6 +24,8 @@ CHARACTER_PROMPT_FILE = os.path.join(_DATA_DIR, "character_prompt.txt")
 CHROMA_DIR         = os.path.join(_DATA_DIR, "chroma_db")
 COLLECTION         = "memory"
 EMBED_MODEL        = "nomic-embed-text"
+OLLAMA_API_HOST    = os.environ.get("TELMI_OLLAMA_HOST", "http://127.0.0.1:11434")
+OLLAMA_CLIENT      = ollama.Client(host=OLLAMA_API_HOST)
 # Cosine distance threshold for /search (0 = identical, 1 = orthogonal, 2 = opposite).
 # nomic-embed-text typically scores relevant hits below 0.50; raise to 0.65 for looser results.
 SEARCH_DISTANCE_THRESHOLD = 0.50
@@ -175,7 +177,7 @@ def get_collection() -> chromadb.Collection:
 
 def get_embedding(text: str) -> list[float] | None:
     try:
-        resp = ollama.embeddings(model=EMBED_MODEL, prompt=text)
+        resp = OLLAMA_CLIENT.embeddings(model=EMBED_MODEL, prompt=text)
         return resp["embedding"]
     except Exception:
         return None
@@ -400,7 +402,7 @@ def extract_notes(history_text: str, selected_model: str) -> list[str]:
         f"{history_text}"
     )
     try:
-        response = ollama.chat(
+        response = OLLAMA_CLIENT.chat(
             model=selected_model,
             messages=[{"role": "user", "content": prompt}],
             options={"temperature": 0.2},
@@ -437,7 +439,7 @@ def regenerate_recent_brief(selected_model: str) -> str:
         f"{bundle}"
     )
     try:
-        response = ollama.chat(
+        response = OLLAMA_CLIENT.chat(
             model=selected_model,
             messages=[{"role": "user", "content": prompt}],
             options={"temperature": 0.3},
@@ -490,7 +492,7 @@ def build_system_prompt() -> dict:
 @app.get("/status")
 def get_status():
     try:
-        result = ollama.list()
+        result = OLLAMA_CLIENT.list()
         models = [m["model"] for m in result["models"]]
         embedding_ok = any("nomic-embed-text" in m for m in models)
         return {"ollama_running": True, "models": models, "embedding_ok": embedding_ok}
@@ -501,7 +503,7 @@ def get_status():
 @app.get("/models", response_model=list[str])
 def list_models():
     try:
-        models = ollama.list()
+        models = OLLAMA_CLIENT.list()
         return [m["model"] for m in models["models"]]
     except Exception:
         return []
@@ -511,7 +513,7 @@ def list_models():
 def pull_model(model: str = Query(...)):
     def generate():
         try:
-            for progress in ollama.pull(model, stream=True):
+            for progress in OLLAMA_CLIENT.pull(model, stream=True):
                 data = json.dumps({
                     "status": progress.get("status", ""),
                     "completed": progress.get("completed", 0),
@@ -534,7 +536,7 @@ def chat(request: ChatRequest):
     messages_for_llm = [system_prompt] + [m.model_dump() for m in request.history]
 
     def generate():
-        for chunk in ollama.chat(
+        for chunk in OLLAMA_CLIENT.chat(
             model=request.selected_model,
             messages=messages_for_llm,
             stream=True,
@@ -579,7 +581,7 @@ def save_session(request: SaveRequest):
     )
 
     try:
-        summary_response = ollama.chat(
+        summary_response = OLLAMA_CLIENT.chat(
             model=request.selected_model,
             messages=[{"role": "user", "content": summary_prompt}],
             options={"temperature": 0.1},

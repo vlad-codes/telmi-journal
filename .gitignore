@@ -20,6 +20,7 @@ __pycache__/
 build/
 dist/
 *.spec
+!telmi-backend.spec
 
 # macOS
 .DS_Store
