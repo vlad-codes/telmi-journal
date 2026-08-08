@@ -227,7 +227,7 @@ function NoOllamaScreen({ onRetry }: { onRetry: () => void }) {
       </div>
 
       <button
-        onClick={() => open('https://ollama.com/download/mac')}
+        onClick={() => open('https://ollama.com/download')}
         className="w-full text-[13px] font-medium text-white
                    bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700
                    rounded-xl px-4 py-2.5 transition-all duration-150
