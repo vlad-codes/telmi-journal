@@ -133,6 +133,16 @@ body {
   animation: cursorBlink 0.85s ease-in-out infinite;
 }
 
+/* Subtle pulsing label for the live "Thinking…" disclosure */
+@keyframes thinkingShimmer {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+.thinking-shimmer {
+  animation: thinkingShimmer 1.4s ease-in-out infinite;
+}
+
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }

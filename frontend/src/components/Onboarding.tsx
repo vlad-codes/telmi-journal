@@ -85,14 +85,12 @@ function PullProgress({ pullState }: { pullState: PullPhase }) {
 function usePull(onDone: () => void) {
   const [pullState, setPullState] = useState<PullPhase>({ phase: 'idle' });
 
-  function startPull(model: string) {
+  async function startPull(model: string) {
     setPullState({ phase: 'pulling', status: 'Starting…', pct: 0 });
 
-    const es = new EventSource(`${API}/pull-model?model=${encodeURIComponent(model)}`);
-
-    es.onmessage = (event) => {
+    function applyEvent(raw: string): boolean {
       try {
-        const data = JSON.parse(event.data) as {
+        const data = JSON.parse(raw) as {
           status: string;
           completed?: number;
           total?: number;
@@ -100,16 +98,14 @@ function usePull(onDone: () => void) {
         };
 
         if (data.status === 'done') {
-          es.close();
           setPullState({ phase: 'done' });
           setTimeout(onDone, 800);
-          return;
+          return true;
         }
 
         if (data.status === 'error') {
-          es.close();
           setPullState({ phase: 'error', message: data.error ?? 'Unknown error' });
-          return;
+          return true;
         }
 
         const pct =
@@ -120,12 +116,46 @@ function usePull(onDone: () => void) {
       } catch {
         // ignore parse errors mid-stream
       }
-    };
+      return false;
+    }
 
-    es.onerror = () => {
-      // EventSource auto-reconnects on network drops — only error out on persistent failure
-      // We leave the state as-is so the progress bar stays visible during reconnect
-    };
+    try {
+      // Pulling changes local machine state, so this is deliberately POST. The
+      // backend rejects browser origins other than Telmi before starting it.
+      const res = await fetch(`${API}/pull-model?model=${encodeURIComponent(model)}`, {
+        method: 'POST',
+      });
+      if (!res.ok || !res.body) throw new Error(`Download request failed (${res.status})`);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let terminalEvent = false;
+
+      while (!terminalEvent) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const blocks = buffer.split('\n\n');
+        buffer = blocks.pop() ?? '';
+        for (const block of blocks) {
+          const dataLine = block.split('\n').find((line) => line.startsWith('data:'));
+          if (dataLine && applyEvent(dataLine.slice(5).trim())) {
+            terminalEvent = true;
+            break;
+          }
+        }
+      }
+
+      if (!terminalEvent && buffer.trim()) {
+        const dataLine = buffer.split('\n').find((line) => line.startsWith('data:'));
+        if (dataLine) terminalEvent = applyEvent(dataLine.slice(5).trim());
+      }
+      if (!terminalEvent) throw new Error('The download stopped before completion.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Model download failed.';
+      setPullState({ phase: 'error', message });
+    }
   }
 
   function reset() {

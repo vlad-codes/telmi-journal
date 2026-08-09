@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 const API = 'http://localhost:8000';
 
@@ -12,8 +12,8 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const initialPromptRef = useRef('');
-  const dirty = prompt.trim() !== initialPromptRef.current.trim();
+  const [initialPrompt, setInitialPrompt] = useState('');
+  const dirty = prompt.trim() !== initialPrompt.trim();
 
   useEffect(() => {
     (async () => {
@@ -24,7 +24,7 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
           const data = await res.json();
           setPrompt(data.prompt ?? '');
           setDefaultPrompt(data.default ?? '');
-          initialPromptRef.current = data.prompt ?? '';
+          setInitialPrompt(data.prompt ?? '');
         }
       } finally {
         setLoading(false);
@@ -46,7 +46,7 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
       if (res.ok) {
         const data = await res.json();
         setPrompt(data.prompt ?? text);
-        initialPromptRef.current = data.prompt ?? text;
+        setInitialPrompt(data.prompt ?? text);
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
       } else {
@@ -67,7 +67,7 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
       if (res.ok) {
         const data = await res.json();
         setPrompt(data.prompt ?? defaultPrompt);
-        initialPromptRef.current = data.prompt ?? defaultPrompt;
+        setInitialPrompt(data.prompt ?? defaultPrompt);
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
       }

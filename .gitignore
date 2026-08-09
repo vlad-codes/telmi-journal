@@ -6,6 +6,7 @@ notes.json
 recent_brief.txt
 character_prompt.txt
 chroma_db/
+.telmi-backups/
 
 # PyInstaller Build-Artefakte
 dist_backend/
@@ -33,6 +34,11 @@ Internal/
 # Demo-/Screenshot-Daten (enthält echte Daten im Backup)
 .demo_backup/
 seed_demo.py
+
+# Local analysis/release workspaces
+.codegraph/
+.release-worktrees/
+.vibe/
 
 # pyenv
 .python-version

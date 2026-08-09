@@ -8,6 +8,7 @@ export type AppStatus =
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  thinking?: string;
 }
 
 export interface SaveResponse {

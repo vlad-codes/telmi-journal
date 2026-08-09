@@ -44,6 +44,8 @@ export default function ArchiveModal({ onClose, initialChatTimestamp, onDataChan
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
     if (!query.trim()) {
+      // This effect reconciles server-backed search results with the full list.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDisplayedEntries(allEntries);
       return;
     }

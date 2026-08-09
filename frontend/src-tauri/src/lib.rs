@@ -1,6 +1,9 @@
 use std::sync::Mutex;
 use tauri::Manager;
-use tauri_plugin_shell::process::{CommandChild, CommandEvent};
+use tauri_plugin_shell::process::CommandChild;
+#[cfg(not(debug_assertions))]
+use tauri_plugin_shell::process::CommandEvent;
+#[cfg(not(debug_assertions))]
 use tauri_plugin_shell::ShellExt;
 
 struct BackendProcess(Mutex<Option<CommandChild>>);
@@ -80,38 +83,57 @@ pub fn run() {
                 )?;
             }
 
-            let data_dir = app.path().app_data_dir()?;
-            std::fs::create_dir_all(&data_dir)?;
+            // In a release build we spawn the bundled Python backend (sidecar)
+            // and point it at the app's PRIVATE data dir
+            // (~/Library/Application Support/com.telmi.desktop/). In dev
+            // (`tauri dev`) we deliberately DON'T spawn it — you run
+            // `uvicorn api:app` manually instead, which defaults its data dir to
+            // the repo folder. That keeps personal data (installed app) and test
+            // data (dev) fully separate, with no chance of `tauri dev` touching
+            // your real entries.
+            #[cfg(not(debug_assertions))]
+            {
+                let data_dir = app.path().app_data_dir()?;
+                std::fs::create_dir_all(&data_dir)?;
 
-            let sidecar = app.shell().sidecar("telmi-backend")?;
-            let (mut rx, child) = sidecar
-                .env("TELMI_DATA_DIR", data_dir.to_string_lossy().as_ref())
-                .spawn()?;
+                let sidecar = app.shell().sidecar("telmi-backend")?;
+                let (mut rx, child) = sidecar
+                    .env("TELMI_DATA_DIR", data_dir.to_string_lossy().as_ref())
+                    .spawn()?;
 
-            // Drain the sidecar's stdout/stderr in a background task so the
-            // pipe never blocks and we can see output in the dev terminal.
-            tauri::async_runtime::spawn(async move {
-                while let Some(event) = rx.recv().await {
-                    match event {
-                        CommandEvent::Stdout(line) => {
-                            print!("[sidecar] {}", String::from_utf8_lossy(&line));
+                // Drain the sidecar's stdout/stderr in a background task so the
+                // pipe never blocks and we can see output in the terminal.
+                tauri::async_runtime::spawn(async move {
+                    while let Some(event) = rx.recv().await {
+                        match event {
+                            CommandEvent::Stdout(line) => {
+                                print!("[sidecar] {}", String::from_utf8_lossy(&line));
+                            }
+                            CommandEvent::Stderr(line) => {
+                                eprint!("[sidecar] {}", String::from_utf8_lossy(&line));
+                            }
+                            CommandEvent::Terminated(payload) => {
+                                eprintln!(
+                                    "[sidecar] process terminated — code: {:?}, signal: {:?}",
+                                    payload.code, payload.signal
+                                );
+                                break;
+                            }
+                            _ => {}
                         }
-                        CommandEvent::Stderr(line) => {
-                            eprint!("[sidecar] {}", String::from_utf8_lossy(&line));
-                        }
-                        CommandEvent::Terminated(payload) => {
-                            eprintln!(
-                                "[sidecar] process terminated — code: {:?}, signal: {:?}",
-                                payload.code, payload.signal
-                            );
-                            break;
-                        }
-                        _ => {}
                     }
-                }
-            });
+                });
 
-            app.manage(BackendProcess(Mutex::new(Some(child))));
+                app.manage(BackendProcess(Mutex::new(Some(child))));
+            }
+
+            // Dev build: no bundled backend — rely on a manually started
+            // `uvicorn api:app` (repo-local data). Manage an empty handle so
+            // `quit_app` still works.
+            #[cfg(debug_assertions)]
+            {
+                app.manage(BackendProcess(Mutex::new(None)));
+            }
 
             // Auto-start Ollama if installed but not already running
             let ollama_child: Option<std::process::Child> =
@@ -119,6 +141,10 @@ pub fn run() {
                     if !ollama_already_running() {
                         std::process::Command::new(&binary)
                             .arg("serve")
+                            // Keep Telmi's managed Ollama server local-only even
+                            // when the parent environment sets OLLAMA_HOST to a
+                            // wildcard bind address such as 0.0.0.0.
+                            .env("OLLAMA_HOST", "127.0.0.1:11434")
                             .stdout(std::process::Stdio::null())
                             .stderr(std::process::Stdio::null())
                             .spawn()
